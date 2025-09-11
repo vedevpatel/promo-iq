@@ -1,14 +1,38 @@
 'use client';
 
-import { motion, useMotionValue, useTransform } from 'framer-motion';
+import { motion, useMotionValue, useTransform, useSpring } from 'framer-motion';
 import { Heart, MessageCircle, Send, Bookmark } from 'lucide-react';
 
 export const InteractiveHeroImage = () => {
-  const x = useMotionValue(200);
-  const y = useMotionValue(250); // half of card height
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
 
-  const rotateX = useTransform(y, [0, 500], [15, -15]);
-  const rotateY = useTransform(x, [0, 400], [-15, 15]);
+  // smooth motion
+  const smoothX = useSpring(x, { stiffness: 100, damping: 20 });
+  const smoothY = useSpring(y, { stiffness: 100, damping: 20 });
+
+  // dramatic tilt
+  const rotateX = useTransform(smoothY, [-200, 200], [35, -35]);
+  const rotateY = useTransform(smoothX, [-200, 200], [-35, 35]);
+
+  // subtle floating
+  const floatY = useTransform(
+    [smoothX, smoothY],
+    () => Math.sin(Date.now() / 500) * 5
+  );
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    x.set(e.clientX - rect.left - centerX);
+    y.set(e.clientY - rect.top - centerY);
+  };
+
+  const handleMouseLeave = () => {
+    x.set(0);
+    y.set(0);
+  };
 
   return (
     <motion.div
@@ -18,33 +42,29 @@ export const InteractiveHeroImage = () => {
         rotateY,
         transformStyle: 'preserve-3d',
         perspective: 1000,
-        height: 500, // 4:5 aspect ratio
+        height: 500,
         maxHeight: '90vh',
+        y: floatY, // adds subtle vertical float
       }}
-      onMouseMove={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        x.set(event.clientX - rect.left);
-        y.set(event.clientY - rect.top);
-      }}
-      onMouseLeave={() => {
-        x.set(200);
-        y.set(250);
-      }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
     >
       {/* Top bar */}
       <div className="flex items-center justify-between px-3 py-2 border-b bg-white">
         <div className="flex items-center gap-2">
-          {/* Profile avatar */}
           <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-black text-xs font-bold">
-            NB
+            <img
+              src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/New_Balance_logo.svg/450px-New_Balance_logo.svg.png"
+              alt="New Balance Logo"
+              className="w-6 h-6 object-contain"
+            />
           </div>
-          {/* Username + Verified */}
           <div className="flex items-center gap-1">
             <span className="font-semibold text-black text-sm">New Balance</span>
-            {/* Verified tick */}
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
+              fill="#3897f0"
               className="w-4 h-4"
             >
               <circle cx="12" cy="12" r="12" fill="#3897f0" />
@@ -55,7 +75,6 @@ export const InteractiveHeroImage = () => {
             </svg>
           </div>
         </div>
-        {/* Sponsored label */}
         <span className="text-xs font-medium text-black/70">Sponsored</span>
       </div>
 

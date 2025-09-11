@@ -34,7 +34,7 @@ export default function HomePage() {
                 From Idea to Impact. Generate Smarter Ads in Seconds.
               </h1>
               <p className="text-lg text-gray-300 mb-8">
-                Transform your ad game with comprehensive AI automation through AdSynth at every step.
+                Transform your ad game with comprehensive AI automation through PromoIQ at every step.
               </p>
               <a href="#generator-form">
                 <button className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-lg transition-transform hover:scale-105">
