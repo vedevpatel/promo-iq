@@ -5,7 +5,7 @@ import { motion, useScroll, useTransform } from 'framer-motion';
 import { GeneratorForm } from "@/components/GeneratorForm";
 import { VantaBackground } from "@/components/VantaBackground";
 import { AuroraBackground } from '@/components/AuroraBackground';
-
+import { InteractiveHeroImage } from '@/components/InteractiveHeroImage';
 export default function HomePage() {
   const mainRef = useRef(null);
 
@@ -42,12 +42,8 @@ export default function HomePage() {
                 </button>
               </a>
             </div>
-            <div className="hidden md:block">
-              <div className="bg-black/30 backdrop-blur-sm p-4 rounded-2xl shadow-2xl">
-                <p className="text-center text-gray-400 p-20">
-                  [Visuals of Generated Ads Will Go Here]
-                </p>
-              </div>
+              <div className="relative w-full min-h-screen flex justify-center pt-20 px-5">
+                <InteractiveHeroImage />
             </div>
           </div>
         </section>
