@@ -165,6 +165,7 @@ Selling advice: ${JSON.stringify(adviceData)}.
 
   return (
     <motion.div
+      id="generator-form"
       className="max-w-4xl mx-auto p-6"
       variants={containerVariants}
       initial="hidden"

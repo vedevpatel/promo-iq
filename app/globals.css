@@ -121,3 +121,8 @@ th {
   font-weight: 600;
   text-align: left;
 }
+
+
+html {
+  scroll-behavior: smooth;
+}
