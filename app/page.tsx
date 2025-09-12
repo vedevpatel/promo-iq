@@ -2,7 +2,7 @@
 
 import { useRef } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
-import { GeneratorForm } from "@/components/GeneratorForm";
+import GeneratorForm  from "@/components/GeneratorForm";
 import { VantaBackground } from "@/components/VantaBackground";
 import { AuroraBackground } from '@/components/AuroraBackground';
 import { InteractiveHeroImage } from '@/components/InteractiveHeroImage';
@@ -30,6 +30,11 @@ export default function HomePage() {
         <section className="container mx-auto min-h-screen flex items-center px-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
             <div className="text-center md:text-left">
+              <h2 className="text-5xl md:text-7xl font-extrabold mb-6 bg-clip-text text-transparent 
+                            bg-gradient-to-r from-orange-400 via-pink-500 to-purple-500 
+                            animate-pulseGlow">
+                PromoIQ
+              </h2>
               <h1 className="text-4xl md:text-6xl font-extrabold text-white leading-tight mb-4">
                 From Idea to Impact. Generate Smarter Ads in Seconds.
               </h1>

@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import type { FormEvent } from 'react';
-import { motion, useInView, useAnimation } from 'framer-motion';
-import { LiquidFillButton } from './LiquidFillButton';
+import { useState, useEffect, FormEvent } from 'react';
+import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { LiquidFillButton } from '@/components/LiquidFillButton';
 
-// Interface for Claude response
 interface ClaudeResult {
   prompt: string;
   system_prompt: string;
@@ -14,192 +13,255 @@ interface ClaudeResult {
   timestamp: string;
 }
 
-export const GeneratorForm = () => {
+export default function MarketingForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [claudeResult, setClaudeResult] = useState<ClaudeResult | null>(null);
+  const [loadingStep, setLoadingStep] = useState(0);
 
-  const ref = useRef(null);
-  const isInView = useInView(ref, { once: true, amount: 0.2 });
-  const controls = useAnimation();
+  // Engagement messages (sequential, not looping)
+  const loadingMessages = [
+    'Visiting websites for the latest selling strategies...',
+    'Retrieving market insights...',
+    'Analyzing competitor positioning...',
+    'Designing campaign outline...',
+    'Finalizing your marketing plan...'
+  ];
 
   useEffect(() => {
-    if (isInView) controls.start('visible');
-  }, [isInView, controls]);
+    if (!isLoading) return;
+    setLoadingStep(0);
 
+    const interval = setInterval(() => {
+      setLoadingStep((prev) => {
+        if (prev < loadingMessages.length - 1) {
+          return prev + 1;
+        }
+        clearInterval(interval); // stop once last message is reached
+        return prev;
+      });
+    }, 4000); // advance every 4s
+
+    return () => clearInterval(interval);
+  }, [isLoading]);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsLoading(true);
+    setError(null);
+    setClaudeResult(null);
+
+    const formData = new FormData(event.currentTarget);
+    const title = formData.get('product_title')?.toString().trim() || '';
+    const description = formData.get('product_description')?.toString().trim() || '';
+    const audience = formData.get('target_audience')?.toString().trim() || '';
+
+    if (!title || !description || !audience) {
+      setError('Please fill out all required fields.');
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      // 🕵️ 1. Scraper call
+      const adviceResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/search-selling-advice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product: `${title} - ${description}`,
+          target_audience: audience,
+          search_limit: 5,
+        }),
+      });
+      if (!adviceResponse.ok) throw new Error('Failed to get selling advice');
+      const adviceData = await adviceResponse.json();
+
+      // 📄 2. Prompt
+      const prompt = `
+Create a marketing plan for the product "${title}".
+Audience: ${audience}.
+Product description: ${description}.
+Selling advice: ${JSON.stringify(adviceData)}.
+
+**Instructions:**
+- Generate the output in **pure Markdown**, not HTML.
+- Include sections: Executive Summary, Target Audience, UVP, Objectives, Strategy, Budget, KPIs, Timeline, Risk Management, Success Factors.
+- Use Markdown headings, bullet points, tables, and separators (---).
+- Emphasize key points with **bold** or *italic*.
+`;
+
+      const systemPrompt = 'You are a marketing expert and creative AI assistant.';
+
+      // 🔌 3. Claude SSE streaming
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/claude`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, system_prompt: systemPrompt }),
+      });
+
+      if (!response.ok || !response.body) throw new Error('Failed to connect to Claude SSE');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = '';
+
+      setClaudeResult({
+        prompt,
+        system_prompt: systemPrompt,
+        response: '',
+        timestamp: new Date().toISOString(),
+      });
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+
+        chunk.split('\n\n').forEach((line) => {
+          if (!line.startsWith('data:')) return;
+          const data = line.replace(/^data:\s*/, '');
+          if (!data) return;
+
+          try {
+            const parsed = JSON.parse(data);
+
+            if (parsed.type === 'chunk') {
+              accumulated += parsed.content;
+              setClaudeResult((prev) =>
+                prev ? { ...prev, response: accumulated } : null
+              );
+            }
+
+            if (parsed.type === 'complete') {
+              setClaudeResult((prev) =>
+                prev ? { ...prev, timestamp: parsed.timestamp } : null
+              );
+              setIsLoading(false);
+            }
+          } catch (err) {
+            console.error('SSE parse error:', err, data);
+          }
+        });
+      }
+    } catch (err: any) {
+      setError(err.message);
+      setIsLoading(false);
+    }
+  };
+
+  // Animations
   const containerVariants = {
     hidden: { opacity: 0 },
-    visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.2 },
+    },
   };
 
   const itemVariants = {
-    hidden: { y: 20, opacity: 0 },
-    visible: { y: 0, opacity: 1, transition: { duration: 0.5 } },
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0 },
   };
-const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-  event.preventDefault();
-  setIsLoading(true);
-  setError(null);
-  setClaudeResult(null);
-
-  const formData = new FormData(event.currentTarget);
-  const title = formData.get('product_title')?.toString().trim() || '';
-  const description = formData.get('product_description')?.toString().trim() || '';
-  const audience = formData.get('target_audience')?.toString().trim() || '';
-
-  if (!title || !description || !audience) {
-    setError('Please fill out all required fields.');
-    setIsLoading(false);
-    return;
-  }
-
-  try {
-    // Step 1: Search selling advice
-    const adviceResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/search-selling-advice`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        product: `${title} - ${description}`,
-        target_audience: audience,
-        search_limit: 5,
-      }),
-    });
-    if (!adviceResponse.ok) throw new Error('Failed to get selling advice');
-    const adviceData = await adviceResponse.json();
-
-    // Step 2: Call Claude to generate a **Markdown marketing plan**
-    const prompt = `
-Create a marketing plan for the product "${title}". 
-Audience: ${audience}. 
-Product description: ${description}. 
-Selling advice: ${JSON.stringify(adviceData)}.
-
-**Instructions:** 
-- Output the plan in Markdown format.
-- Use # for main headings, ## for subheadings.
-- Use **bold** for emphasis.
-- Use - for bullet points.
-- Include sections: Executive Summary, Target Audience, Marketing Strategy, Budget, KPIs, Timeline, Risk Management.
-- Keep it structured and easy to read.
-    `;
-
-    const systemPrompt = 'You are a marketing expert and creative AI assistant.';
-    const claudeResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/claude`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, system_prompt: systemPrompt }),
-    });
-
-    if (!claudeResponse.ok) throw new Error('Failed to generate marketing plan');
-
-    const claudeData: ClaudeResult = await claudeResponse.json();
-    setClaudeResult(claudeData);
-  } catch (err: any) {
-    setError(err.message);
-  } finally {
-    setIsLoading(false);
-  }
-};
-
 
   return (
-    <div id="generator-form" ref={ref} className="py-24 sm:py-32">
-      <motion.div
-        className="mx-auto w-full max-w-3xl px-6 lg:px-8"
-        variants={containerVariants}
-        initial="hidden"
-        animate={controls}
+    <motion.div
+      className="max-w-4xl mx-auto p-6"
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+    >
+      <motion.h1
+        className="text-3xl font-bold mb-6 text-center text-gray-100"
+        variants={itemVariants}
       >
+        AI Marketing Strategy Generator
+      </motion.h1>
+
+      <motion.form
+        onSubmit={handleSubmit}
+        className="space-y-6 bg-gray-900 p-6 rounded-2xl shadow-xl border border-gray-800"
+        variants={containerVariants}
+      >
+        <motion.div variants={itemVariants}>
+          <label className="block text-gray-300 font-medium mb-2">
+            Product Title *
+          </label>
+          <input
+            type="text"
+            name="product_title"
+            className="w-full px-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-700 focus:ring-2 focus:ring-blue-500"
+            placeholder="e.g., Eco-Friendly Sneakers"
+            required
+          />
+        </motion.div>
+
+        <motion.div variants={itemVariants}>
+          <label className="block text-gray-300 font-medium mb-2">
+            Product Description *
+          </label>
+          <textarea
+            name="product_description"
+            className="w-full px-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-700 focus:ring-2 focus:ring-blue-500"
+            placeholder="Describe your product..."
+            rows={3}
+            required
+          />
+        </motion.div>
+
+        <motion.div variants={itemVariants}>
+          <label className="block text-gray-300 font-medium mb-2">
+            Target Audience *
+          </label>
+          <input
+            type="text"
+            name="target_audience"
+            className="w-full px-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-700 focus:ring-2 focus:ring-blue-500"
+            placeholder="e.g., Young professionals, fitness enthusiasts"
+            required
+          />
+        </motion.div>
+
+        <motion.div variants={itemVariants}>
+          <LiquidFillButton type="submit" disabled={isLoading}>
+            {isLoading ? 'Generating...' : 'Generate Plan'}
+          </LiquidFillButton>
+        </motion.div>
+
+        {isLoading && (
+          <motion.div
+            variants={itemVariants}
+            className="mt-6 text-center text-gray-400 text-sm animate-pulse"
+          >
+            {loadingMessages[loadingStep]}
+          </motion.div>
+        )}
+      </motion.form>
+
+      {error && (
         <motion.div
-          className="bg-black/30 backdrop-blur-sm p-8 rounded-2xl shadow-2xl border border-white/10"
+          className="mt-6 p-4 bg-red-900/50 border border-red-700 text-red-200 rounded-lg"
           variants={itemVariants}
         >
-          <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl text-center">
-            Generate Your Marketing Plan
-          </h2>
-          <p className="mt-2 text-center text-lg leading-8 text-gray-300">
-            Provide your product details to generate a marketing plan.
-          </p>
-
-          <form onSubmit={handleSubmit} className="space-y-6 mt-10">
-            {/* Product Title */}
-            <motion.div variants={itemVariants}>
-              <label htmlFor="product_title" className="block text-sm font-medium leading-6 text-gray-300">
-                Product Title
-              </label>
-              <input
-                type="text"
-                name="product_title"
-                id="product_title"
-                required
-                placeholder="Awesome Energy Drink"
-                className="block w-full rounded-md border-0 bg-white/5 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-inset focus:ring-orange-500 placeholder:text-gray-500"
-              />
-            </motion.div>
-
-            {/* Product Description */}
-            <motion.div variants={itemVariants}>
-              <label htmlFor="product_description" className="block text-sm font-medium leading-6 text-gray-300">
-                Product Description
-              </label>
-              <textarea
-                name="product_description"
-                id="product_description"
-                rows={4}
-                required
-                placeholder="Describe your product here..."
-                className="block w-full rounded-md border-0 bg-white/5 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-inset focus:ring-orange-500 placeholder:text-gray-500"
-              />
-            </motion.div>
-
-            {/* Target Audience */}
-            <motion.div variants={itemVariants}>
-              <label htmlFor="target_audience" className="block text-sm font-medium leading-6 text-gray-300">
-                Target Audience
-              </label>
-              <input
-                type="text"
-                name="target_audience"
-                id="target_audience"
-                required
-                placeholder="e.g., Young professionals, fitness enthusiasts"
-                className="block w-full rounded-md border-0 bg-white/5 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-white/10 focus:ring-2 focus:ring-inset focus:ring-orange-500 placeholder:text-gray-500"
-              />
-            </motion.div>
-
-            {/* Submit Button */}
-            <motion.div variants={itemVariants}>
-              <LiquidFillButton type="submit" disabled={isLoading}>
-                {isLoading ? 'Generating...' : 'Generate Plan'}
-              </LiquidFillButton>
-            </motion.div>
-          </form>
-
-          {/* Results */}
-          {error && <p className="mt-4 text-center text-red-400">{error}</p>}
-
-          {claudeResult && (
-            <div className="mt-12">
-              <h3 className="text-2xl font-bold text-white text-center">Marketing Plan</h3>
-              <div className="mt-6 border-t border-white/10 pt-6 prose prose-invert max-w-none">
-                {/* Render Claude response as Markdown */}
-                <ReactMarkdown>{claudeResult.response}</ReactMarkdown>
-
-                {/* Placeholder Ad Image */}
-                <div className="mt-8 flex justify-center">
-                  <img
-                    src="https://via.placeholder.com/400x250?text=Ad+Image+Placeholder"
-                    alt="Ad placeholder"
-                    className="rounded-lg shadow-xl"
-                  />
-                </div>
-
-                <p className="text-gray-400 mt-2 text-sm">{claudeResult.timestamp}</p>
-              </div>
-            </div>
-          )}
+          {error}
         </motion.div>
-      </motion.div>
-    </div>
+      )}
+
+      {claudeResult && (
+        <motion.div
+          className="mt-10 p-6 bg-gray-900 rounded-2xl shadow-xl border border-gray-800"
+          variants={itemVariants}
+        >
+          <h2 className="text-xl font-semibold mb-4 text-gray-100">
+            Generated Marketing Plan
+          </h2>
+
+          <div className="prose prose-invert max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {claudeResult.response || '*Waiting for content...*'}
+            </ReactMarkdown>
+          </div>
+        </motion.div>
+      )}
+    </motion.div>
   );
-};
+}
