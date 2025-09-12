@@ -55,6 +55,7 @@ export default function MarketingForm() {
     const title = formData.get('product_title')?.toString().trim() || '';
     const description = formData.get('product_description')?.toString().trim() || '';
     const audience = formData.get('target_audience')?.toString().trim() || '';
+    const imageFile = formData.get('product_image') as File | null;
 
     if (!title || !description || !audience) {
       setError('Please fill out all required fields.');
@@ -63,7 +64,7 @@ export default function MarketingForm() {
     }
 
     try {
-      // 🕵️ 1. Scraper call
+      // 1. Scraper call
       const adviceResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/search-selling-advice`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -76,7 +77,7 @@ export default function MarketingForm() {
       if (!adviceResponse.ok) throw new Error('Failed to get selling advice');
       const adviceData = await adviceResponse.json();
 
-      // 📄 2. Prompt
+      // 2. Prompt
       const prompt = `
 Create a marketing plan for the product "${title}".
 Audience: ${audience}.
@@ -191,7 +192,7 @@ Selling advice: ${JSON.stringify(adviceData)}.
             type="text"
             name="product_title"
             className="w-full px-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-700 focus:ring-2 focus:ring-blue-500"
-            placeholder="e.g., Eco-Friendly Sneakers"
+            placeholder="e.g., Awesome Energy Drink"
             required
           />
         </motion.div>
@@ -203,7 +204,7 @@ Selling advice: ${JSON.stringify(adviceData)}.
           <textarea
             name="product_description"
             className="w-full px-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-700 focus:ring-2 focus:ring-blue-500"
-            placeholder="Describe your product..."
+            placeholder="e.g., A refreshing, zero-sugar energy drink with natural electolytes..."
             rows={3}
             required
           />
@@ -221,6 +222,30 @@ Selling advice: ${JSON.stringify(adviceData)}.
             required
           />
         </motion.div>
+
+        <motion.div variants={itemVariants}>
+          <label className="block text-gray-300 font-medium mb-2">
+            Upload your product image*
+          </label>
+
+          <div className="flex items-center">
+            <input
+              id="product_image"
+              type="file"
+              name="product_image"
+              accept="image/*"
+              className="hidden"
+              //required
+            />
+            <label
+              htmlFor="product_image"
+              className="cursor-pointer bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition-transform hover:scale-105"
+            >
+              Choose File
+            </label>
+          </div>
+        </motion.div>
+
 
         <motion.div variants={itemVariants}>
           <LiquidFillButton type="submit" disabled={isLoading}>

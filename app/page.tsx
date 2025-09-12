@@ -6,6 +6,7 @@ import GeneratorForm  from "@/components/GeneratorForm";
 import { VantaBackground } from "@/components/VantaBackground";
 import { AuroraBackground } from '@/components/AuroraBackground';
 import { InteractiveHeroImage } from '@/components/InteractiveHeroImage';
+import { TextReveal } from '@/components/core/text-reveal';
 export default function HomePage() {
   const mainRef = useRef(null);
 
@@ -30,17 +31,17 @@ export default function HomePage() {
         <section className="container mx-auto min-h-screen flex items-center px-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
             <div className="text-center md:text-left">
-              <h2 className="text-5xl md:text-7xl font-extrabold mb-6 bg-clip-text text-transparent 
+              <h2 className="text-5xl md:text-8xl font-extrabold mb-6 bg-clip-text text-transparent 
                             bg-gradient-to-r from-orange-400 via-pink-500 to-purple-500 
                             animate-pulseGlow">
                 PromoIQ
               </h2>
-              <h1 className="text-4xl md:text-6xl font-extrabold text-white leading-tight mb-4">
-                From Idea to Impact. Generate Smarter Ads in Seconds.
-              </h1>
-              <p className="text-lg text-gray-300 mb-8">
+              <TextReveal className="text-4xl md:text-5xl font-extrabold text-white leading-tight mb-4">
+                From   Idea  to  Impact. Generate Smarter   Ads   in   Seconds.
+              </TextReveal>
+              <TextReveal className="text-lg text-gray-300 mb-8">
                 Transform your ad game with comprehensive AI automation through PromoIQ at every step.
-              </p>
+              </TextReveal>
               <a href="#generator-form">
                 <button className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-lg transition-transform hover:scale-105">
                   Get Started
