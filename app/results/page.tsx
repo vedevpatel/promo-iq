@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -18,6 +18,8 @@ interface FormData {
   title: string;
   description: string;
   audience: string;
+  imageBase64: string;
+  imageMediaType: string;
 }
 
 export default function ResultsPage() {
@@ -25,7 +27,11 @@ export default function ResultsPage() {
   const [error, setError] = useState<string | null>(null);
   const [claudeResult, setClaudeResult] = useState<ClaudeResult | null>(null);
   const [loadingStep, setLoadingStep] = useState(0);
+  const [generatedAds, setGeneratedAds] = useState<string[]>([]);
   const router = useRouter();
+  const isMounted = useRef(true);
+  const [imagePromptResult, setImagePromptResult] = useState<string>(''); // for image prompt only
+
 
   // Engagement messages (sequential, not looping)
   const loadingMessages = [
@@ -35,6 +41,13 @@ export default function ResultsPage() {
     'Designing campaign outline...',
     'Finalizing your marketing plan...'
   ];
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     // Handle loading messages animation
@@ -54,8 +67,76 @@ export default function ResultsPage() {
     return () => clearInterval(interval);
   }, [isLoading]);
 
+async function getClaudeResponse(
+  prompt: string,
+  systemPrompt: string,
+  imageBase64?: string,
+  imageMediaType?: string,
+  onChunk?: (chunk: string) => void // optional callback for streaming
+): Promise<string> {
+  const body: any = { prompt, system_prompt: systemPrompt };
+  if (imageBase64 && imageMediaType) {
+    body.image_base64 = imageBase64;
+    body.image_media_type = imageMediaType;
+  }
+
+  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/claude`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok || !response.body) throw new Error(`Failed to connect to Claude: ${response.statusText}`);
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let accumulated = '';
+
+  return new Promise((resolve, reject) => {
+    const read = async () => {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          resolve(accumulated);
+          return;
+        }
+
+        const chunk = decoder.decode(value, { stream: true });
+
+        chunk.split('\n\n').forEach((line) => {
+          if (!line.startsWith('data:')) return;
+          const data = line.replace(/^data:\s*/, '');
+          if (!data) return;
+
+          try {
+            const parsed = JSON.parse(data);
+
+            if (parsed.type === 'chunk') {
+              accumulated += parsed.content;
+              if (isMounted.current && onChunk) {
+                onChunk(parsed.content); // only updates UI if callback provided
+              }
+            }
+
+            if (parsed.type === 'complete') {
+              resolve(accumulated);
+            }
+          } catch (err) {
+            console.error('SSE parse error:', err);
+          }
+        });
+
+        read();
+      } catch (err) {
+        reject(err);
+      }
+    };
+    read();
+  });
+}
+
+
   useEffect(() => {
-    // Retrieve form data and process API calls
     const fetchMarketingPlan = async () => {
       try {
         const storedFormData = localStorage.getItem('formData');
@@ -65,8 +146,7 @@ export default function ResultsPage() {
           return;
         }
 
-        const { title, description, audience }: FormData = JSON.parse(storedFormData);
-        // Delay cleanup to ensure data is used
+        const { title, description, audience, imageBase64, imageMediaType }: FormData = JSON.parse(storedFormData);
         setTimeout(() => localStorage.removeItem('formData'), 1000);
 
         // 1. Scraper call
@@ -79,15 +159,16 @@ export default function ResultsPage() {
             search_limit: 5,
           }),
         });
-        if (!adviceResponse.ok) throw new Error('Failed to get selling advice');
+        if (!adviceResponse.ok) throw new Error(`Failed to get selling advice: ${adviceResponse.statusText}`);
         const adviceData = await adviceResponse.json();
 
-        // 2. Prompt
-        const prompt = `
+        // 2. Prompt for marketing plan
+        const planPrompt = `
 Create a marketing plan for the product "${title}".
 Audience: ${audience}.
 Product description: ${description}.
 Selling advice: ${JSON.stringify(adviceData)}.
+The product image is attached. Use it to inform the marketing plan.
 
 **Instructions:**
 - Generate the output in **pure Markdown**, not HTML.
@@ -98,60 +179,92 @@ Selling advice: ${JSON.stringify(adviceData)}.
 
         const systemPrompt = 'You are a marketing expert and creative AI assistant.';
 
-        // 3. Claude SSE streaming
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/claude`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, system_prompt: systemPrompt }),
-        });
-
-        if (!response.ok || !response.body) throw new Error('Failed to connect to Claude SSE');
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let accumulated = '';
-
-        setClaudeResult({
-          prompt,
-          system_prompt: systemPrompt,
-          response: '',
-          timestamp: new Date().toISOString(),
-        });
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-
-          chunk.split('\n\n').forEach((line) => {
-            if (!line.startsWith('data:')) return;
-            const data = line.replace(/^data:\s*/, '');
-            if (!data) return;
-
-            try {
-              const parsed = JSON.parse(data);
-
-              if (parsed.type === 'chunk') {
-                accumulated += parsed.content;
-                setClaudeResult((prev) =>
-                  prev ? { ...prev, response: accumulated } : null
-                );
-              }
-
-              if (parsed.type === 'complete') {
-                setClaudeResult((prev) =>
-                  prev ? { ...prev, timestamp: parsed.timestamp } : null
-                );
-                setIsLoading(false);
-              }
-            } catch (err) {
-              console.error('SSE parse error:', err, data);
-            }
-          });
+        // 3. Start Claude SSE streaming for plan
+        getClaudeResponse(
+        planPrompt,
+        systemPrompt,
+        imageBase64,
+        imageMediaType,
+        (chunk) => {
+            if (!isMounted.current) return;
+            setClaudeResult((prev) =>
+            prev
+                ? { ...prev, response: (prev.response || '') + chunk }
+                : {
+                    prompt: planPrompt,
+                    system_prompt: systemPrompt,
+                    response: chunk,
+                    timestamp: new Date().toISOString(),
+                }
+            );
         }
+        ).then(() => {
+        if (isMounted.current) setIsLoading(false);
+        }).catch((err) => {
+        if (isMounted.current) {
+            setError('Failed to generate marketing plan. Please try again.');
+            setIsLoading(false);
+        }
+        });
+
+
+        // Parallel: Generate image prompt and ads (in background)
+        const generateImages = async () => {
+          try {
+            const imagePromptPrompt = `
+Generate a very detailed prompt for an ad image for the product "${title}".
+Audience: ${audience}.
+Product description: ${description}.
+Selling advice: ${JSON.stringify(adviceData)}.
+Attached is the product image. Analyze its colors, composition, and key elements to create a highly detailed prompt optimized for Google Imagen 4.
+The ad should be modern and clean, with vibrant visuals, clear product focus, and appeal to the target audience.
+Include specific details like background, lighting, mood, and any text overlays.
+Return only the prompt text.
+`;
+
+            const systemPromptForImage = 'You are an expert in creating detailed image prompts for AI image generators.';
+
+            const detailedPrompt = await getClaudeResponse(imagePromptPrompt, systemPromptForImage, imageBase64, imageMediaType);
+            
+            setImagePromptResult(detailedPrompt); // store for debugging if needed
+
+            const adsResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/generate-product-ads`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                product_description: description,
+                product_image: imageBase64,
+                target_audience: audience,
+                ad_style: detailedPrompt,
+                num_prompts: 4,
+              }),
+            });
+
+            if (!adsResponse.ok) {
+              const errorData = await adsResponse.json();
+              throw new Error(`Failed to generate ads: ${errorData.detail?.[0]?.msg || adsResponse.statusText}`);
+            }
+
+            const adsData = await adsResponse.json();
+            console.log('Image API response:', adsData);
+            if (isMounted.current) {
+              setGeneratedAds(adsData.generated_ads || []);
+            }
+          } catch (imageErr: any) {
+            console.error('Image generation error:', imageErr.message);
+            if (isMounted.current) {
+              setGeneratedAds([]); // Ensure placeholders are shown
+            }
+          }
+        };
+
+        generateImages();
+        
       } catch (err: any) {
-        setError(err.message);
-        setIsLoading(false);
+        if (isMounted.current) {
+          setError('Failed to generate marketing plan. Please try again.');
+          setIsLoading(false);
+        }
       }
     };
 
@@ -210,7 +323,7 @@ Selling advice: ${JSON.stringify(adviceData)}.
         </motion.div>
       )}
 
-      {claudeResult && !isLoading && (
+      {claudeResult && !error && (
         <motion.div
           className="mt-10 p-6 bg-gray-900 rounded-2xl shadow-xl border border-gray-800"
           variants={itemVariants}
@@ -222,6 +335,38 @@ Selling advice: ${JSON.stringify(adviceData)}.
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {claudeResult.response || '*Waiting for content...*'}
             </ReactMarkdown>
+          </div>
+        </motion.div>
+      )}
+
+      {claudeResult && !error && (
+        <motion.div
+          className="mt-10 p-6 bg-gray-900 rounded-2xl shadow-xl border border-gray-800"
+          variants={itemVariants}
+        >
+          <h2 className="text-xl font-semibold mb-4 text-gray-100">
+            Generated Ad Images
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {generatedAds.length > 0 ? (
+              generatedAds.map((ad, index) => (
+                <img
+                  key={index}
+                  src={`data:image/png;base64,${ad}`}
+                  alt={`Generated Ad ${index + 1}`}
+                  className="w-full h-48 object-cover rounded-lg shadow-lg"
+                />
+              ))
+            ) : (
+              Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="w-full h-48 bg-gray-700 rounded-lg flex items-center justify-center text-gray-400 text-sm"
+                >
+                  Image not available
+                </div>
+              ))
+            )}
           </div>
         </motion.div>
       )}

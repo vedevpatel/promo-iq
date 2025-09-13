@@ -8,7 +8,28 @@ import { useRouter } from 'next/navigation';
 export default function MarketingForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const router = useRouter();
+
+  const getBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = (error) => reject(error);
+  });
+
+  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    setSelectedImage(file);
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => setImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    } else {
+      setImagePreview(null);
+    }
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -21,26 +42,35 @@ export default function MarketingForm() {
     const audience = formData.get('target_audience')?.toString().trim() || '';
     const imageFile = formData.get('product_image') as File | null;
 
-    if (!title || !description || !audience) {
-      setError('Please fill out all required fields.');
+    if (!title || !description || !audience || !imageFile) {
+      setError('Please fill out all required fields, including the product image.');
       setIsLoading(false);
       return;
     }
 
-    // Store form data in localStorage to pass to results page
-    localStorage.setItem('formData', JSON.stringify({ title, description, audience }));
-    
-    // Navigate to results page immediately
-    router.push('/results');
+    try {
+      const base64Result = await getBase64(imageFile);
+      const match = base64Result.match(/data:(.*?);base64,(.*)/);
+      if (!match) throw new Error('Failed to process image.');
+      const [, imageMediaType, imageBase64] = match;
+
+      // Store form data in localStorage to pass to results page
+      localStorage.setItem(
+        'formData',
+        JSON.stringify({ title, description, audience, imageBase64, imageMediaType })
+      );
+
+      router.push('/results');
+    } catch (err: any) {
+      setError(err.message);
+      setIsLoading(false);
+    }
   };
 
   // Animations
   const containerVariants = {
     hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: { staggerChildren: 0.2 },
-    },
+    show: { opacity: 1, transition: { staggerChildren: 0.2 } },
   };
 
   const itemVariants = {
@@ -109,15 +139,17 @@ export default function MarketingForm() {
 
         <motion.div variants={itemVariants}>
           <label className="block text-gray-300 font-medium mb-2">
-            Upload your product image*
+            Upload your product image *
           </label>
-          <div className="flex items-center">
+          <div className="flex items-center gap-4 mb-2">
             <input
               id="product_image"
               type="file"
               name="product_image"
               accept="image/*"
               className="hidden"
+              onChange={handleImageChange}
+              required
             />
             <label
               htmlFor="product_image"
@@ -125,7 +157,17 @@ export default function MarketingForm() {
             >
               Choose File
             </label>
+            <span className="text-gray-400">
+              {selectedImage ? selectedImage.name : 'No file selected'}
+            </span>
           </div>
+          {imagePreview && (
+            <img
+              src={imagePreview}
+              alt="Selected product preview"
+              className="w-32 h-32 object-cover rounded-lg border border-gray-700 mt-2"
+            />
+          )}
         </motion.div>
 
         <motion.div variants={itemVariants}>
