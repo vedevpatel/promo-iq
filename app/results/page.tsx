@@ -83,9 +83,9 @@ export default function ResultsPage() {
             gyroControls: false,
             minHeight: 200.00,
             minWidth: 200.00,
-            highlightColor: 0x70042, // Adjusted to valid hex
-            midtoneColor: 0xf900bf, // Bright pink
-            lowlightColor: 0x0f7f5, // Adjusted to valid hex
+            highlightColor: 0x88cf,
+            midtoneColor: 0xff09ff,
+            lowlightColor: 0x21f700,
             baseColor: 0x23153c, // Matches your dark purple background
             blurFactor: 0.72,
             zoom: 1,
