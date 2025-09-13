@@ -31,9 +31,9 @@ export default function ResultsPage() {
   const router = useRouter();
   const isMounted = useRef(true);
   const [imagePromptResult, setImagePromptResult] = useState<string>(''); // for image prompt only
+  const vantaRef = useRef<HTMLDivElement | null>(null);
+  const [vantaEffect, setVantaEffect] = useState<any>(null);
 
-
-  // Engagement messages (sequential, not looping)
   const loadingMessages = [
     'Visiting websites for the latest selling strategies...',
     'Retrieving market insights...',
@@ -50,7 +50,6 @@ export default function ResultsPage() {
   }, []);
 
   useEffect(() => {
-    // Handle loading messages animation
     if (!isLoading) return;
     setLoadingStep(0);
 
@@ -62,79 +61,131 @@ export default function ResultsPage() {
         clearInterval(interval); // Stop once last message is reached
         return prev;
       });
-    }, 4000); // Advance every 4s
+    }, 4000);
 
     return () => clearInterval(interval);
   }, [isLoading]);
 
-async function getClaudeResponse(
-  prompt: string,
-  systemPrompt: string,
-  imageBase64?: string,
-  imageMediaType?: string,
-  onChunk?: (chunk: string) => void // optional callback for streaming
-): Promise<string> {
-  const body: any = { prompt, system_prompt: systemPrompt };
-  if (imageBase64 && imageMediaType) {
-    body.image_base64 = imageBase64;
-    body.image_media_type = imageMediaType;
-  }
+  useEffect(() => {
+    let vanta: any;
 
-  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/claude`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok || !response.body) throw new Error(`Failed to connect to Claude: ${response.statusText}`);
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let accumulated = '';
-
-  return new Promise((resolve, reject) => {
-    const read = async () => {
+    const initVanta = async () => {
       try {
-        const { done, value } = await reader.read();
-        if (done) {
-          resolve(accumulated);
-          return;
+        const THREE = await import('three');
+        const FOG = (await import('vanta/dist/vanta.fog.min')).default;
+
+        if (!vantaEffect && vantaRef.current) {
+          vanta = FOG({
+            el: vantaRef.current,
+            THREE,
+            mouseControls: true,
+            touchControls: true,
+            gyroControls: false,
+            minHeight: 200.00,
+            minWidth: 200.00,
+            highlightColor: 0x70042, // Adjusted to valid hex
+            midtoneColor: 0xf900bf, // Bright pink
+            lowlightColor: 0x0f7f5, // Adjusted to valid hex
+            baseColor: 0x23153c, // Matches your dark purple background
+            blurFactor: 0.72,
+            zoom: 1,
+            speed: 1,
+          });
+          setVantaEffect(vanta);
+          console.log('Vanta initialized with options:', vanta.options);
         }
-
-        const chunk = decoder.decode(value, { stream: true });
-
-        chunk.split('\n\n').forEach((line) => {
-          if (!line.startsWith('data:')) return;
-          const data = line.replace(/^data:\s*/, '');
-          if (!data) return;
-
-          try {
-            const parsed = JSON.parse(data);
-
-            if (parsed.type === 'chunk') {
-              accumulated += parsed.content;
-              if (isMounted.current && onChunk) {
-                onChunk(parsed.content); // only updates UI if callback provided
-              }
-            }
-
-            if (parsed.type === 'complete') {
-              resolve(accumulated);
-            }
-          } catch (err) {
-            console.error('SSE parse error:', err);
-          }
-        });
-
-        read();
       } catch (err) {
-        reject(err);
+        console.error('Failed to load Vanta:', err);
       }
     };
-    read();
-  });
-}
 
+    initVanta();
+
+    const handleResize = () => {
+      if (vantaEffect) {
+        vantaEffect.resize();
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    window.addEventListener('scroll', handleResize);
+
+    return () => {
+      if (vanta) vanta.destroy();
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+      window.removeEventListener('scroll', handleResize);
+    };
+  }, [vantaEffect]);
+
+  async function getClaudeResponse(
+    prompt: string,
+    systemPrompt: string,
+    imageBase64?: string,
+    imageMediaType?: string,
+    onChunk?: (chunk: string) => void
+  ): Promise<string> {
+    const body: any = { prompt, system_prompt: systemPrompt };
+    if (imageBase64 && imageMediaType) {
+      body.image_base64 = imageBase64;
+      body.image_media_type = imageMediaType;
+    }
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/claude`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok || !response.body) throw new Error(`Failed to connect to Claude: ${response.statusText}`);
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let accumulated = '';
+
+    return new Promise((resolve, reject) => {
+      const read = async () => {
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            resolve(accumulated);
+            return;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+
+          chunk.split('\n\n').forEach((line) => {
+            if (!line.startsWith('data:')) return;
+            const data = line.replace(/^data:\s*/, '');
+            if (!data) return;
+
+            try {
+              const parsed = JSON.parse(data);
+
+              if (parsed.type === 'chunk') {
+                accumulated += parsed.content;
+                if (isMounted.current && onChunk) {
+                  onChunk(parsed.content);
+                }
+              }
+
+              if (parsed.type === 'complete') {
+                resolve(accumulated);
+              }
+            } catch (err) {
+              console.error('SSE parse error:', err);
+            }
+          });
+
+          read();
+        } catch (err) {
+          reject(err);
+        }
+      };
+      read();
+    });
+  }
 
   useEffect(() => {
     const fetchMarketingPlan = async () => {
@@ -149,7 +200,6 @@ async function getClaudeResponse(
         const { title, description, audience, imageBase64, imageMediaType }: FormData = JSON.parse(storedFormData);
         setTimeout(() => localStorage.removeItem('formData'), 1000);
 
-        // 1. Scraper call
         const adviceResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/search-selling-advice`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -162,7 +212,6 @@ async function getClaudeResponse(
         if (!adviceResponse.ok) throw new Error(`Failed to get selling advice: ${adviceResponse.statusText}`);
         const adviceData = await adviceResponse.json();
 
-        // 2. Prompt for marketing plan
         const planPrompt = `
 Create a marketing plan for the product "${title}".
 Audience: ${audience}.
@@ -179,36 +228,33 @@ The product image is attached. Use it to inform the marketing plan.
 
         const systemPrompt = 'You are a marketing expert and creative AI assistant.';
 
-        // 3. Start Claude SSE streaming for plan
         getClaudeResponse(
-        planPrompt,
-        systemPrompt,
-        imageBase64,
-        imageMediaType,
-        (chunk) => {
+          planPrompt,
+          systemPrompt,
+          imageBase64,
+          imageMediaType,
+          (chunk) => {
             if (!isMounted.current) return;
             setClaudeResult((prev) =>
-            prev
+              prev
                 ? { ...prev, response: (prev.response || '') + chunk }
                 : {
                     prompt: planPrompt,
                     system_prompt: systemPrompt,
                     response: chunk,
                     timestamp: new Date().toISOString(),
-                }
+                  }
             );
-        }
+          }
         ).then(() => {
-        if (isMounted.current) setIsLoading(false);
+          if (isMounted.current) setIsLoading(false);
         }).catch((err) => {
-        if (isMounted.current) {
+          if (isMounted.current) {
             setError('Failed to generate marketing plan. Please try again.');
             setIsLoading(false);
-        }
+          }
         });
 
-
-        // Parallel: Generate image prompt and ads (in background)
         const generateImages = async () => {
           try {
             const imagePromptPrompt = `
@@ -225,8 +271,7 @@ Return only the prompt text.
             const systemPromptForImage = 'You are an expert in creating detailed image prompts for AI image generators.';
 
             const detailedPrompt = await getClaudeResponse(imagePromptPrompt, systemPromptForImage, imageBase64, imageMediaType);
-            
-            setImagePromptResult(detailedPrompt); // store for debugging if needed
+            setImagePromptResult(detailedPrompt);
 
             const adsResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/generate-product-ads`, {
               method: 'POST',
@@ -253,13 +298,12 @@ Return only the prompt text.
           } catch (imageErr: any) {
             console.error('Image generation error:', imageErr.message);
             if (isMounted.current) {
-              setGeneratedAds([]); // Ensure placeholders are shown
+              setGeneratedAds([]);
             }
           }
         };
 
         generateImages();
-        
       } catch (err: any) {
         if (isMounted.current) {
           setError('Failed to generate marketing plan. Please try again.');
@@ -271,7 +315,6 @@ Return only the prompt text.
     fetchMarketingPlan();
   }, []);
 
-  // Animations
   const containerVariants = {
     hidden: { opacity: 0 },
     show: {
@@ -286,44 +329,53 @@ Return only the prompt text.
   };
 
   return (
-    <motion.div
-      className="max-w-4xl mx-auto p-6"
-      variants={containerVariants}
-      initial="hidden"
-      animate="show"
-    >
-      <motion.h1
-        className="text-3xl font-bold mb-6 text-center text-gray-100"
-        variants={itemVariants}
+    <div className="relative min-h-screen w-full">
+      {/* Vanta Background */}
+      <div
+        ref={vantaRef}
+        className="fixed inset-0 z-0 pointer-events-none"
+        style={{ opacity: vantaEffect ? 1 : 0, minHeight: '100vh' }}
+      />
+
+      {/* Main Content */}
+      <motion.div
+        className="relative max-w-4xl mx-auto p-6 z-10 bg-gray-900 bg-opacity-90 backdrop-blur-sm rounded-2xl min-h-screen"
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
       >
-        Your Marketing Plan
-      </motion.h1>
-
-      <motion.div variants={itemVariants}>
-        <LiquidFillButton onClick={() => router.push('/')}>
-          Back to Form
-        </LiquidFillButton>
-      </motion.div>
-
-      {isLoading && (
-        <motion.div
-          variants={itemVariants}
-          className="mt-6 text-center text-gray-400 text-sm animate-pulse"
-        >
-          {loadingMessages[loadingStep]}
-        </motion.div>
-      )}
-
-      {error && (
-        <motion.div
-          className="mt-6 p-4 bg-red-900/50 border border-red-700 text-red-200 rounded-lg"
+        <motion.h1
+          className="text-3xl font-bold mb-6 text-center text-gray-100"
           variants={itemVariants}
         >
-          {error}
-        </motion.div>
-      )}
+          Your Marketing Plan
+        </motion.h1>
 
-      {claudeResult && !error && (
+        <motion.div variants={itemVariants}>
+          <LiquidFillButton onClick={() => router.push('/')}>
+            Back to Form
+          </LiquidFillButton>
+        </motion.div>
+
+        {isLoading && (
+          <motion.div
+            variants={itemVariants}
+            className="mt-6 text-center text-gray-400 text-sm animate-pulse"
+          >
+            {loadingMessages[loadingStep]}
+          </motion.div>
+        )}
+
+        {error && (
+          <motion.div
+            className="mt-6 p-4 bg-red-900/50 border border-red-700 text-red-200 rounded-lg"
+            variants={itemVariants}
+          >
+            {error}
+          </motion.div>
+        )}
+
+        {/* Always render the Marketing Plan card */}
         <motion.div
           className="mt-10 p-6 bg-gray-900 rounded-2xl shadow-xl border border-gray-800"
           variants={itemVariants}
@@ -333,13 +385,12 @@ Return only the prompt text.
           </h2>
           <div className="prose prose-invert max-w-none">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {claudeResult.response || '*Waiting for content...*'}
+              {claudeResult?.response || '*Loading marketing plan...*'}
             </ReactMarkdown>
           </div>
         </motion.div>
-      )}
 
-      {claudeResult && !error && (
+        {/* Always render the Ad Images card */}
         <motion.div
           className="mt-10 p-6 bg-gray-900 rounded-2xl shadow-xl border border-gray-800"
           variants={itemVariants}
@@ -363,13 +414,13 @@ Return only the prompt text.
                   key={index}
                   className="w-full h-48 bg-gray-700 rounded-lg flex items-center justify-center text-gray-400 text-sm"
                 >
-                  Image not available
+                  {isLoading ? 'Loading...' : 'Image not available'}
                 </div>
               ))
             )}
           </div>
         </motion.div>
-      )}
-    </motion.div>
+      </motion.div>
+    </div>
   );
 }
