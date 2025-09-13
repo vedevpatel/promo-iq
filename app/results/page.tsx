@@ -206,7 +206,7 @@ export default function ResultsPage() {
           body: JSON.stringify({
             product: `${title} - ${description}`,
             target_audience: audience,
-            search_limit: 5,
+            search_limit: 1,
           }),
         });
         if (!adviceResponse.ok) throw new Error(`Failed to get selling advice: ${adviceResponse.statusText}`);
@@ -424,5 +424,5 @@ Return only the prompt text.
     </div>
   );
 
-  
+
 }
