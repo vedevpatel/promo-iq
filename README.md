@@ -1,3 +1,10 @@
+# AWS Hackathon: PromoIQ - 1st Place Winner 🏆
+## This repository contains the frontend source code for our winning project at the AWS Gen-AI Knowledge Base Hackathon on September 13, 2025.
+## Collaborators: Ved Patel, Neal O'Conway, Cheryl Cheung, Jai Puli
+
+### Important Note: This is a collaborative project. The frontend is hosted on GitHub, while the backend is hosted on Replit.
+
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
