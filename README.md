@@ -9,6 +9,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 
 <img width="1790" height="827" alt="image" src="https://github.com/user-attachments/assets/51ca251c-80ee-4dd5-9c14-be127fb1d225" />
+<img width="962" height="816" alt="image (3)" src="https://github.com/user-attachments/assets/4f9d4286-7bcf-4af2-b3b1-95bca12f51e6" />
 <img width="1842" height="910" alt="image (2)" src="https://github.com/user-attachments/assets/71cdbca6-f5ec-45b1-856f-34f268543929" />
 <img width="936" height="894" alt="image (1)" src="https://github.com/user-attachments/assets/1b3f019a-5e38-4da1-bc69-d5ba55482495" />
 
